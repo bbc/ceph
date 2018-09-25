@@ -24,9 +24,8 @@
 #endif /*USE_NSS*/
 
 #ifdef USE_OPENSSL
-typedef struct SHA256state_st SHA256_CTX;
-typedef struct SHAstate_st SHA_CTX;
-typedef struct MD5state_st MD5_CTX;
+typedef struct env_md_ctx_st EVP_MD_CTX;
+typedef struct env_md_st EVP_MD;
 #endif /*USE_OPENSSL*/
 
 namespace ceph {
@@ -109,35 +108,31 @@ namespace ceph {
 namespace ceph {
   namespace crypto {
     namespace ssl {
-      class SHA256 : public Digest {
+      class OpenSSLDigest : public Digest {
       private:
-	SHA256_CTX *mpContext;
+	EVP_MD_CTX *mpContext;
+	const EVP_MD *mpType;
       public:
-	SHA256 ();
-	virtual ~SHA256 ();
+	OpenSSLDigest (SECOidTag _type);
+	virtual ~OpenSSLDigest ();
 	virtual void Restart();
 	virtual void Update (const unsigned char *input, size_t length);
 	virtual void Final (unsigned char *digest);
       };
-      class SHA1 : public Digest {
-      private:
-	SHA_CTX *mpContext;
+
+      class MD5 : public OpenSSLDigest {
       public:
-	SHA1 ();
-	virtual ~SHA1 ();
-	virtual void Restart();
-	virtual void Update (const unsigned char *input, size_t length);
-	virtual void Final (unsigned char *digest);
+	MD5 () : OpenSSLDigest(SEC_OID_MD5) { }
       };
-      class MD5 : public Digest {
-      private:
-	MD5_CTX *mpContext;
+
+      class SHA1 : public OpenSSLDigest {
       public:
-	MD5 ();
-	virtual ~MD5 ();
-	virtual void Restart();
-	virtual void Update (const unsigned char *input, size_t length);
-	virtual void Final (unsigned char *digest);
+        SHA1 () : OpenSSLDigest(SEC_OID_SHA1) { }
+      };
+
+      class SHA256 : public OpenSSLDigest {
+      public:
+        SHA256 () : OpenSSLDigest(SEC_OID_SHA256) { }
       };
     }
   }

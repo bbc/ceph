@@ -25,8 +25,7 @@
 #endif /*USE_NSS*/
 
 #ifdef USE_OPENSSL
-#include <openssl/sha.h>
-#include <openssl/md5.h>
+#include <openssl/evp.h>
 #endif /*USE_OPENSSL*/
 
 #ifdef USE_NSS
@@ -90,74 +89,42 @@ ceph::crypto::HMAC::~HMAC()
 #endif /*USE_NSS*/
 
 #ifdef USE_OPENSSL
-ceph::crypto::ssl::SHA256::SHA256() {
-  mpContext = reinterpret_cast<SHA256_CTX *>(malloc(sizeof(SHA256_CTX)));
-    this->Restart();
-}
 
-ceph::crypto::ssl::SHA256::~SHA256() {
-  free(mpContext);
-}
-
-void ceph::crypto::ssl::SHA256::Restart() {
-  SHA256_Init(mpContext);
-}
-
-void ceph::crypto::ssl::SHA256::Update(const unsigned char *input, size_t length) {
-  if (length) {
-    SHA256_Update(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
+const EVP_MD *SECOidTag_to_EVP_MD(SECOidTag _type) {
+  switch (_type) {
+  case SEC_OID_MD5:
+    return EVP_md5();
+  case SEC_OID_SHA1:
+    return EVP_sha1();
+  case SEC_OID_SHA256:
+    return EVP_sha256();
+  default:
+    return NULL;
   }
 }
 
-void ceph::crypto::ssl::SHA256::Final(unsigned char *digest) {
-  SHA256_Final(digest, mpContext);
-}
-
-
-ceph::crypto::ssl::SHA1::SHA1() {
-  mpContext = reinterpret_cast<SHA_CTX *>(malloc(sizeof(SHA_CTX)));
+ceph::crypto::ssl::OpenSSLDigest::OpenSSLDigest(SECOidTag _type) {
+  mpContext = EVP_MD_CTX_create();
+  mpType = SECOidTag_to_EVP_MD(_type);
   this->Restart();
 }
 
-ceph::crypto::ssl::SHA1::~SHA1() {
-  free(mpContext);
+ceph::crypto::ssl::OpenSSLDigest::~OpenSSLDigest() {
+  EVP_MD_CTX_destroy(mpContext);
 }
 
-void ceph::crypto::ssl::SHA1::Restart() {
-  SHA1_Init(mpContext);
+void ceph::crypto::ssl::OpenSSLDigest::Restart() {
+  EVP_DigestInit_ex(mpContext, mpType, NULL);
 }
 
-void ceph::crypto::ssl::SHA1::Update(const unsigned char *input, size_t length) {
+void ceph::crypto::ssl::OpenSSLDigest::Update(const unsigned char *input, size_t length) {
   if (length) {
-    SHA1_Update(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
+    EVP_DigestUpdate(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
   }
 }
 
-void ceph::crypto::ssl::SHA1::Final(unsigned char *digest) {
-  SHA1_Final(digest, mpContext);
-}
-
-
-ceph::crypto::ssl::MD5::MD5() {
-  mpContext = reinterpret_cast<MD5_CTX *>(malloc(sizeof(MD5_CTX)));
-  this->Restart();
-}
-
-ceph::crypto::ssl::MD5::~MD5() {
-  free(mpContext);
-}
-
-void ceph::crypto::ssl::MD5::Restart() {
-  MD5_Init(mpContext);
-}
-
-void ceph::crypto::ssl::MD5::Update(const unsigned char *input, size_t length) {
-  if (length) {
-    MD5_Update(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
-  }
-}
-
-void ceph::crypto::ssl::MD5::Final(unsigned char *digest) {
-  MD5_Final(digest, mpContext);
+void ceph::crypto::ssl::OpenSSLDigest::Final(unsigned char *digest) {
+  unsigned int s;
+  EVP_DigestFinal_ex(mpContext, digest, &s);
 }
 #endif /*USE_OPENSSL*/
