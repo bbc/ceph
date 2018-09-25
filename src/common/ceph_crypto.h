@@ -1,3 +1,4 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 #ifndef CEPH_CRYPTO_H
 #define CEPH_CRYPTO_H
 
@@ -20,6 +21,13 @@
 // with error checking, and just say these really should never fail.
 // This assert MUST NOT be compiled out, even on non-debug builds.
 # include "include/assert.h"
+#endif /*USE_NSS*/
+
+#ifdef USE_OPENSSL
+typedef struct SHA256state_st SHA256_CTX;
+typedef struct SHAstate_st SHA_CTX;
+typedef struct MD5state_st MD5_CTX;
+#endif /*USE_OPENSSL*/
 
 namespace ceph {
   namespace crypto {
@@ -27,54 +35,139 @@ namespace ceph {
     void init(CephContext *cct);
     void shutdown(bool shared=true);
     class Digest {
-    private:
-      PK11Context *ctx;
-      size_t digest_size;
     public:
-      Digest (SECOidTag _type, size_t _digest_size) : digest_size(_digest_size) {
-	ctx = PK11_CreateDigestContext(_type);
-	assert(ctx);
-	Restart();
-      }
-      ~Digest () {
-	PK11_DestroyContext(ctx, PR_TRUE);
-      }
-      void Restart() {
-	SECStatus s;
-	s = PK11_DigestBegin(ctx);
-	assert(s == SECSuccess);
-      }
-      void Update (const unsigned char *input, size_t length) {
-        if (length) {
-	  SECStatus s;
-	  s = PK11_DigestOp(ctx, input, length);
-	  assert(s == SECSuccess);
+      Digest () {};
+      virtual ~Digest () {}
+      virtual void Restart() = 0;
+      virtual void Update (const unsigned char *input, size_t length) = 0;
+      virtual void Final (unsigned char *digest) = 0;
+    };
+  }
+}
+
+#ifdef USE_NSS
+namespace ceph {
+  namespace crypto {
+    namespace nss {
+      class NSSDigest : public Digest {
+      private:
+        PK11Context *ctx;
+        size_t digest_size;
+      public:
+        NSSDigest (SECOidTag _type, size_t _digest_size)
+	  : Digest()
+	  , digest_size(_digest_size) {
+	  ctx = PK11_CreateDigestContext(_type);
+	  assert(ctx);
+	  Restart();
         }
-      }
-      void Final (unsigned char *digest) {
-	SECStatus s;
-	unsigned int dummy;
-	s = PK11_DigestFinal(ctx, digest, &dummy, digest_size);
-	assert(s == SECSuccess);
-	assert(dummy == digest_size);
-	Restart();
-      }
-    };
-    class MD5 : public Digest {
-    public:
-      MD5 () : Digest(SEC_OID_MD5, CEPH_CRYPTO_MD5_DIGESTSIZE) { }
-    };
+        virtual ~NSSDigest () {
+	  PK11_DestroyContext(ctx, PR_TRUE);
+	}
+	virtual void Restart() {
+	  SECStatus s;
+	  s = PK11_DigestBegin(ctx);
+	  assert(s == SECSuccess);
+	}
+	virtual void Update (const unsigned char *input, size_t length) {
+	  if (length) {
+	    SECStatus s;
+	    s = PK11_DigestOp(ctx, input, length);
+	    assert(s == SECSuccess);
+	  }
+	}
+	virtual void Final (unsigned char *digest) {
+	  SECStatus s;
+	  unsigned int dummy;
+	  s = PK11_DigestFinal(ctx, digest, &dummy, digest_size);
+	  assert(s == SECSuccess);
+	  assert(dummy == digest_size);
+	  Restart();
+	}
+      };
 
-    class SHA1 : public Digest {
-    public:
-      SHA1 () : Digest(SEC_OID_SHA1, CEPH_CRYPTO_SHA1_DIGESTSIZE) { }
-    };
+      class MD5 : public NSSDigest {
+      public:
+	MD5 () : NSSDigest(SEC_OID_MD5, CEPH_CRYPTO_MD5_DIGESTSIZE) { }
+      };
 
-    class SHA256 : public Digest {
-    public:
-      SHA256 () : Digest(SEC_OID_SHA256, CEPH_CRYPTO_SHA256_DIGESTSIZE) { }
-    };
+      class SHA1 : public NSSDigest {
+      public:
+        SHA1 () : NSSDigest(SEC_OID_SHA1, CEPH_CRYPTO_SHA1_DIGESTSIZE) { }
+      };
 
+      class SHA256 : public NSSDigest {
+      public:
+        SHA256 () : NSSDigest(SEC_OID_SHA256, CEPH_CRYPTO_SHA256_DIGESTSIZE) { }
+      };
+    }
+  }
+}
+#endif /*USE_NSS*/
+
+#ifdef USE_OPENSSL
+namespace ceph {
+  namespace crypto {
+    namespace ssl {
+      class SHA256 : public Digest {
+      private:
+	SHA256_CTX *mpContext;
+      public:
+	SHA256 ();
+	virtual ~SHA256 ();
+	virtual void Restart();
+	virtual void Update (const unsigned char *input, size_t length);
+	virtual void Final (unsigned char *digest);
+      };
+      class SHA1 : public Digest {
+      private:
+	SHA_CTX *mpContext;
+      public:
+	SHA1 ();
+	virtual ~SHA1 ();
+	virtual void Restart();
+	virtual void Update (const unsigned char *input, size_t length);
+	virtual void Final (unsigned char *digest);
+      };
+      class MD5 : public Digest {
+      private:
+	MD5_CTX *mpContext;
+      public:
+	MD5 ();
+	virtual ~MD5 ();
+	virtual void Restart();
+	virtual void Update (const unsigned char *input, size_t length);
+	virtual void Final (unsigned char *digest);
+      };
+    }
+  }
+}
+#endif /*USE_OPENSSL*/
+
+#if defined(USE_OPENSSL)
+namespace ceph {
+  namespace crypto {
+    using ceph::crypto::ssl::SHA256;
+    using ceph::crypto::ssl::MD5;
+    using ceph::crypto::ssl::SHA1;
+  }
+}
+#elif defined(USE_NSS)
+namespace ceph {
+  namespace crypto {
+    using ceph::crypto::nss::SHA256;
+    using ceph::crypto::nss::MD5;
+    using ceph::crypto::nss::SHA1;
+  }
+}
+#else
+# error "No supported crypto implementation found."
+#endif
+
+
+#ifdef USE_NSS
+namespace ceph {
+  namespace crypto {
     class HMAC {
     private:
       PK11SlotInfo *slot;
