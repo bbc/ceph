@@ -22,6 +22,15 @@
 #include <secmod.h>
 #include <nspr.h>
 
+#endif /*USE_NSS*/
+
+#ifdef USE_OPENSSL
+#include <openssl/sha.h>
+#include <openssl/md5.h>
+#endif /*USE_OPENSSL*/
+
+#ifdef USE_NSS
+
 static pthread_mutex_t crypto_init_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint32_t crypto_refs = 0;
 static NSSInitContext *crypto_context = NULL;
@@ -78,4 +87,77 @@ ceph::crypto::HMAC::~HMAC()
 
 #else
 # error "No supported crypto implementation found."
-#endif
+#endif /*USE_NSS*/
+
+#ifdef USE_OPENSSL
+ceph::crypto::ssl::SHA256::SHA256() {
+  mpContext = reinterpret_cast<SHA256_CTX *>(malloc(sizeof(SHA256_CTX)));
+    this->Restart();
+}
+
+ceph::crypto::ssl::SHA256::~SHA256() {
+  free(mpContext);
+}
+
+void ceph::crypto::ssl::SHA256::Restart() {
+  SHA256_Init(mpContext);
+}
+
+void ceph::crypto::ssl::SHA256::Update(const unsigned char *input, size_t length) {
+  if (length) {
+    SHA256_Update(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
+  }
+}
+
+void ceph::crypto::ssl::SHA256::Final(unsigned char *digest) {
+  SHA256_Final(digest, mpContext);
+}
+
+
+ceph::crypto::ssl::SHA1::SHA1() {
+  mpContext = reinterpret_cast<SHA_CTX *>(malloc(sizeof(SHA_CTX)));
+  this->Restart();
+}
+
+ceph::crypto::ssl::SHA1::~SHA1() {
+  free(mpContext);
+}
+
+void ceph::crypto::ssl::SHA1::Restart() {
+  SHA1_Init(mpContext);
+}
+
+void ceph::crypto::ssl::SHA1::Update(const unsigned char *input, size_t length) {
+  if (length) {
+    SHA1_Update(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
+  }
+}
+
+void ceph::crypto::ssl::SHA1::Final(unsigned char *digest) {
+  SHA1_Final(digest, mpContext);
+}
+
+
+ceph::crypto::ssl::MD5::MD5() {
+  mpContext = reinterpret_cast<MD5_CTX *>(malloc(sizeof(MD5_CTX)));
+  this->Restart();
+}
+
+ceph::crypto::ssl::MD5::~MD5() {
+  free(mpContext);
+}
+
+void ceph::crypto::ssl::MD5::Restart() {
+  MD5_Init(mpContext);
+}
+
+void ceph::crypto::ssl::MD5::Update(const unsigned char *input, size_t length) {
+  if (length) {
+    MD5_Update(mpContext, const_cast<void *>(reinterpret_cast<const void *>(input)), length);
+  }
+}
+
+void ceph::crypto::ssl::MD5::Final(unsigned char *digest) {
+  MD5_Final(digest, mpContext);
+}
+#endif /*USE_OPENSSL*/
