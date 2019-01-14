@@ -380,6 +380,33 @@ EC2Engine::get_from_keystone(const DoutPrefixProvider* dpp, const boost::string_
   return std::make_pair(std::move(token_envelope), 0);
 }
 
+/*
+ * Try to get a token for S3 authentication, using a cache if available
+ */
+std::pair<boost::optional<rgw::keystone::TokenEnvelope>, int>
+EC2Engine::get_access_token(const DoutPrefixProvider* dpp, const boost::string_view& access_key_id,
+                            const std::string& string_to_sign,
+                            const boost::string_view& signature) const
+{
+  /* Get a token from the cache if one has already been stored */
+  std::string sig = signature.to_string();
+  boost::optional<rgw::keystone::TokenEnvelope> token = token_cache.find(sig);
+  if (token) {
+    return std::make_pair(token, 0);
+  }
+
+  /* No cached token, fall back to keystone */
+  int failure_reason;
+  std::tie(token, failure_reason) = get_from_keystone(dpp, access_key_id, string_to_sign, signature);
+
+  /* Add the token to the cache */
+  if (token) {
+    token_cache.add(sig, *token);
+  }
+  
+  return std::make_pair(token, failure_reason);
+}
+
 EC2Engine::acl_strategy_t
 EC2Engine::get_acl_strategy(const EC2Engine::token_envelope_t&) const
 {
@@ -447,7 +474,7 @@ rgw::auth::Engine::result_t EC2Engine::authenticate(
   boost::optional<token_envelope_t> t;
   int failure_reason;
   std::tie(t, failure_reason) = \
-    get_from_keystone(dpp, access_key_id, string_to_sign, signature);
+    get_access_token(dpp, access_key_id, string_to_sign, signature);
   if (! t) {
     return result_t::deny(failure_reason);
   }

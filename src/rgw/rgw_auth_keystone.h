@@ -92,6 +92,10 @@ class EC2Engine : public rgw::auth::s3::AWSEngine {
   get_from_keystone(const DoutPrefixProvider* dpp, const boost::string_view& access_key_id,
                     const std::string& string_to_sign,
                     const boost::string_view& signature) const;
+  std::pair<boost::optional<token_envelope_t>, int>
+  get_access_token(const DoutPrefixProvider* dpp, const boost::string_view& access_key_id,
+                   const std::string& string_to_sign,
+                   const boost::string_view& signature) const;
   result_t authenticate(const DoutPrefixProvider* dpp,
                         const boost::string_view& access_key_id,
                         const boost::string_view& signature,
